@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prévention & Aide - Carte des ressources</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" />
+    <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
     <style>
         body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; }
         #map { height: 100vh; width: 100%; }
@@ -35,10 +35,27 @@
         }
         a { pointer-events: auto; }
 
-        .panel {
+        .panel-launcher {
             position: absolute;
             top: 80px;
             left: 10px;
+            z-index: 1000;
+            background: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+        }
+        .panel-launcher:hover { background: #34495e; }
+
+        .panel {
+            position: absolute;
+            top: 80px;
+            left: 64px;
             z-index: 1000;
             background: white;
             border-radius: 8px;
@@ -48,6 +65,12 @@
             display: flex;
             flex-direction: column;
             font-size: 13px;
+        }
+        .panel.hidden { display: none; }
+        .panel-close {
+            cursor: pointer;
+            padding: 0 4px;
+            margin-left: 4px;
         }
         .panel-header {
             background: #2c3e50;
@@ -91,6 +114,53 @@
             cursor: pointer;
         }
         .country-list li:hover { background: #ecf0f1; }
+
+        .panel-launcher.add { top: 134px; background: #27ae60; }
+        .panel-launcher.add:hover { background: #2ecc71; }
+
+        .form-panel { width: 240px; }
+        .form-panel .panel-body { padding: 10px 12px; gap: 6px; display: flex; flex-direction: column; }
+        .form-panel label { font-size: 11px; color: #555; margin-top: 4px; }
+        .form-panel select,
+        .form-panel input {
+            padding: 5px 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+        .form-panel button.submit {
+            margin-top: 8px;
+            padding: 7px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .form-panel button.submit:hover { background: #2ecc71; }
+        .form-panel .error { color: #c0392b; font-size: 11px; min-height: 14px; }
+
+        body { background: #000814; }
+        .marker-pin {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            background: white;
+            border: 2px solid white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(0,0,0,0.7);
+        }
+        .marker-pin.pin-contact {
+            background: #27ae60;
+            border-color: #2ecc71;
+            color: white;
+        }
+        .maplibregl-popup-content { font-family: Arial, Helvetica, sans-serif; }
     </style>
 </head>
 <body>
@@ -99,46 +169,107 @@
     ⚠️ En cas d'urgence immédiate : <strong>17</strong> (police) ou <strong>112</strong> (Europe).
 </div>
 <div id="map"></div>
-<div class="panel" id="panel">
+<button class="panel-launcher" id="panel-launcher" title="Aller à...">🌍</button>
+<button class="panel-launcher add" id="form-launcher" title="Ajouter un contact">➕</button>
+<div class="panel hidden" id="panel">
     <div class="panel-header" id="panel-header">
         <span>🌍 Aller à...</span>
-        <span class="panel-toggle" id="panel-toggle">−</span>
+        <span>
+            <span class="panel-toggle" id="panel-toggle">−</span>
+            <span class="panel-close" id="panel-close">×</span>
+        </span>
     </div>
     <div class="panel-body" id="panel-body"></div>
+</div>
+<div class="panel form-panel hidden" id="form-panel">
+    <div class="panel-header" id="form-header">
+        <span>➕ Ajouter un contact</span>
+        <span class="panel-close" id="form-close">×</span>
+    </div>
+    <div class="panel-body">
+        <label for="f-continent">Continent</label>
+        <select id="f-continent"><option value="">— choisir —</option></select>
+
+        <label for="f-pays">Pays</label>
+        <select id="f-pays" disabled><option value="">— choisir —</option></select>
+
+        <label for="f-ville">Ville</label>
+        <input id="f-ville" type="text" placeholder="Ex. Lyon" />
+
+        <label for="f-snap">Snap (optionnel)</label>
+        <input id="f-snap" type="text" placeholder="pseudo" />
+
+        <label for="f-tel">Numéro (optionnel)</label>
+        <input id="f-tel" type="tel" placeholder="+33 6 12 34 56 78" />
+
+        <label for="f-tg">Telegram (optionnel)</label>
+        <input id="f-tg" type="text" placeholder="@pseudo" />
+
+        <label for="f-wa">WhatsApp (optionnel)</label>
+        <input id="f-wa" type="tel" placeholder="+33 6 12 34 56 78" />
+
+        <div class="error" id="f-error"></div>
+        <button class="submit" id="f-submit">Ajouter sur la carte</button>
+    </div>
 </div>
 <div class="footer">
     Données indicatives | <a href="https://www.drogues.gouv.fr/" target="_blank">drogues.gouv.fr</a> | <a href="https://www.pharos.controle.gouv.fr/" target="_blank">Signalement Pharos</a>
 </div>
 
 <script>
-    // Initialisation : vue globale au lancement, l'utilisateur zoome ensuite
-    var map = L.map('map', { worldCopyJump: true, minZoom: 2 }).setView([20, 0], 2);
+    // Globe 3D vu de l'espace (MapLibre GL avec projection globe + imagerie satellite ESRI)
+    var map = new maplibregl.Map({
+        container: 'map',
+        center: [0, 20],
+        zoom: 0.4,
+        minZoom: 0,
+        maxZoom: 18,
+        projection: 'globe',
+        style: {
+            version: 8,
+            sources: {
+                basemap: {
+                    type: 'raster',
+                    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+                    tileSize: 256,
+                    attribution: 'Tiles &copy; Esri — World Imagery'
+                }
+            },
+            layers: [
+                { id: 'space', type: 'background', paint: { 'background-color': '#000814' } },
+                { id: 'basemap', type: 'raster', source: 'basemap' }
+            ]
+        }
+    });
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 
-    // Fond de carte OpenStreetMap (libre et sans tracking)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CartoDB</a>',
-        subdomains: 'abcd',
-        maxZoom: 19
-    }).addTo(map);
+    // Construit un élément HTML pour un marqueur (utilisable comme `element` de Marker)
+    function makeIcon(emoji, extraClass) {
+        var el = document.createElement('div');
+        el.className = 'marker-pin' + (extraClass ? ' ' + extraClass : '');
+        el.textContent = emoji;
+        return el;
+    }
 
-    // Icônes selon le type
-    var icones = {
-        addictologie: L.divIcon({ html: "🏥", className: "custom-icon", iconSize: [25,25] }),
-        "réduction risques": L.divIcon({ html: "💉", className: "custom-icon", iconSize: [25,25] }),
-        "aide victimes": L.divIcon({ html: "🛡️", className: "custom-icon", iconSize: [25,25] }),
-        soins: L.divIcon({ html: "🩺", className: "custom-icon", iconSize: [25,25] })
-    };
+    function iconePourType(type) {
+        if (type === 'addictologie') return '🏥';
+        if (type === 'réduction risques') return '💉';
+        if (type === 'aide victimes') return '🛡️';
+        if (type === 'soins') return '🩺';
+        return '📍';
+    }
 
     function ajouterRessources(ressources) {
         ressources.forEach(r => {
-            var marker = L.marker([r.lat, r.lng], { icon: icones[r.type] || L.divIcon({ html: "📍" }) }).addTo(map);
-            marker.bindPopup(`
-                <b>${r.nom}</b><br>
-                ${r.adresse}<br>
-                📞 ${r.tel}<br>
-                <i>${r.type}</i><br>
-                <a href="https://www.google.com/maps/search/?api=1&query=${r.lat},${r.lng}" target="_blank">🗺️ Itinéraire</a>
-            `);
+            var html = '<b>' + r.nom + '</b><br>' +
+                       r.adresse + '<br>' +
+                       '📞 ' + r.tel + '<br>' +
+                       '<i>' + r.type + '</i><br>' +
+                       '<a href="https://www.google.com/maps/search/?api=1&query=' + r.lat + ',' + r.lng + '" target="_blank">🗺️ Itinéraire</a>';
+            new maplibregl.Marker({ element: makeIcon(iconePourType(r.type)) })
+                .setLngLat([r.lng, r.lat])
+                .setPopup(new maplibregl.Popup({ offset: 18 }).setHTML(html))
+                .addTo(map);
         });
     }
 
@@ -151,10 +282,10 @@
         .then(ajouterRessources)
         .catch(err => {
             console.error("Impossible de charger resources.json :", err);
-            L.popup()
-                .setLatLng(map.getCenter())
-                .setContent("⚠️ Impossible de charger les ressources. Réessayez plus tard.")
-                .openOn(map);
+            new maplibregl.Popup()
+                .setLngLat(map.getCenter())
+                .setHTML("⚠️ Impossible de charger les ressources. Réessayez plus tard.")
+                .addTo(map);
         });
 
     // Panneau de navigation par continent/pays
@@ -162,10 +293,19 @@
     var panelBody = document.getElementById('panel-body');
     var panelHeader = document.getElementById('panel-header');
     var panelToggle = document.getElementById('panel-toggle');
+    var panelLauncher = document.getElementById('panel-launcher');
+    var panelClose = document.getElementById('panel-close');
 
-    // Empêche Leaflet de capter clics/scroll/drag faits sur le panneau
-    L.DomEvent.disableClickPropagation(panel);
-    L.DomEvent.disableScrollPropagation(panel);
+    // Ouvrir / fermer le panneau via le bouton
+    panelLauncher.addEventListener('click', () => {
+        panel.classList.remove('hidden');
+        panelLauncher.style.display = 'none';
+    });
+    panelClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.classList.add('hidden');
+        panelLauncher.style.display = '';
+    });
 
     function construirePanneau(continents) {
         Object.keys(continents).forEach(nomCont => {
@@ -180,7 +320,7 @@
             continents[nomCont].forEach(pays => {
                 var li = document.createElement('li');
                 li.textContent = pays.nom;
-                li.addEventListener('click', () => map.flyTo([pays.lat, pays.lng], pays.zoom));
+                li.addEventListener('click', () => map.flyTo({ center: [pays.lng, pays.lat], zoom: pays.zoom }));
                 ul.appendChild(li);
             });
 
@@ -197,7 +337,7 @@
 
     fetch('countries.json')
         .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
-        .then(construirePanneau)
+        .then(data => { construirePanneau(data); peuplerSelects(data); })
         .catch(err => console.error("Impossible de charger countries.json :", err));
 
     // Bouton réduire/agrandir
@@ -207,23 +347,159 @@
         panelToggle.textContent = panel.classList.contains('collapsed') ? '+' : '−';
     });
 
-    // Déplacement du panneau (souris + tactile via Pointer Events)
-    var dragging = false, offsetX = 0, offsetY = 0;
-    panelHeader.addEventListener('pointerdown', (e) => {
-        if (e.target === panelToggle) return;
-        dragging = true;
-        offsetX = e.clientX - panel.offsetLeft;
-        offsetY = e.clientY - panel.offsetTop;
-        panelHeader.setPointerCapture(e.pointerId);
+    // Rend un panneau déplaçable par son header (souris + tactile)
+    function rendreDraggable(panneau, header, ignorerCibles) {
+        var dragging = false, offsetX = 0, offsetY = 0;
+        header.addEventListener('pointerdown', (e) => {
+            if (ignorerCibles && ignorerCibles.includes(e.target)) return;
+            dragging = true;
+            offsetX = e.clientX - panneau.offsetLeft;
+            offsetY = e.clientY - panneau.offsetTop;
+            header.setPointerCapture(e.pointerId);
+        });
+        header.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            var x = Math.max(0, Math.min(window.innerWidth - panneau.offsetWidth, e.clientX - offsetX));
+            var y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - offsetY));
+            panneau.style.left = x + 'px';
+            panneau.style.top = y + 'px';
+        });
+        header.addEventListener('pointerup', () => dragging = false);
+    }
+    rendreDraggable(panel, panelHeader, [panelToggle, panelClose]);
+
+    // -------- Panneau "Ajouter un contact" --------
+    var formPanel = document.getElementById('form-panel');
+    var formHeader = document.getElementById('form-header');
+    var formClose = document.getElementById('form-close');
+    var formLauncher = document.getElementById('form-launcher');
+    var selContinent = document.getElementById('f-continent');
+    var selPays = document.getElementById('f-pays');
+    var inVille = document.getElementById('f-ville');
+    var inSnap = document.getElementById('f-snap');
+    var inTel = document.getElementById('f-tel');
+    var inTg = document.getElementById('f-tg');
+    var inWa = document.getElementById('f-wa');
+    var errBox = document.getElementById('f-error');
+    var btnSubmit = document.getElementById('f-submit');
+
+    rendreDraggable(formPanel, formHeader, [formClose]);
+
+    formLauncher.addEventListener('click', () => {
+        formPanel.classList.remove('hidden');
+        formLauncher.style.display = 'none';
     });
-    panelHeader.addEventListener('pointermove', (e) => {
-        if (!dragging) return;
-        var x = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, e.clientX - offsetX));
-        var y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - offsetY));
-        panel.style.left = x + 'px';
-        panel.style.top = y + 'px';
+    formClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        formPanel.classList.add('hidden');
+        formLauncher.style.display = '';
     });
-    panelHeader.addEventListener('pointerup', () => dragging = false);
+
+    // Données pays pour le formulaire (rempli quand countries.json est chargé)
+    var continentsData = {};
+    function peuplerSelects(continents) {
+        continentsData = continents;
+        Object.keys(continents).forEach(c => {
+            var opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            selContinent.appendChild(opt);
+        });
+    }
+    selContinent.addEventListener('change', () => {
+        selPays.innerHTML = '<option value="">— choisir —</option>';
+        var pays = continentsData[selContinent.value] || [];
+        pays.forEach((p, i) => {
+            var opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = p.nom;
+            selPays.appendChild(opt);
+        });
+        selPays.disabled = pays.length === 0;
+    });
+
+    // Liens contact -> URL cliquable
+    function lienContact(type, valeur) {
+        var v = valeur.trim();
+        if (!v) return '';
+        if (type === 'snap')   return '<a href="https://snapchat.com/add/' + encodeURIComponent(v.replace(/^@/, '')) + '" target="_blank">👻 ' + v + '</a>';
+        if (type === 'tel')    return '<a href="tel:' + v.replace(/[^+0-9]/g, '') + '">📞 ' + v + '</a>';
+        if (type === 'tg')     return '<a href="https://t.me/' + encodeURIComponent(v.replace(/^@/, '')) + '" target="_blank">✈️ ' + v + '</a>';
+        if (type === 'wa')     return '<a href="https://wa.me/' + v.replace(/[^0-9]/g, '') + '" target="_blank">💬 ' + v + '</a>';
+        return '';
+    }
+
+    function popupHtml(c) {
+        var lignes = [];
+        if (c.snap) lignes.push(lienContact('snap', c.snap));
+        if (c.tel)  lignes.push(lienContact('tel',  c.tel));
+        if (c.tg)   lignes.push(lienContact('tg',   c.tg));
+        if (c.wa)   lignes.push(lienContact('wa',   c.wa));
+        return '<b>' + c.ville + '</b><br>' +
+               '<small>' + c.pays + ' — ' + c.continent + '</small><br>' +
+               lignes.join('<br>');
+    }
+
+    function ajouterContactSurCarte(c) {
+        new maplibregl.Marker({ element: makeIcon('👤', 'pin-contact') })
+            .setLngLat([c.lng, c.lat])
+            .setPopup(new maplibregl.Popup({ offset: 18 }).setHTML(popupHtml(c)))
+            .addTo(map);
+    }
+
+    // Persistance via localStorage
+    var STORE_KEY = 'contacts_v1';
+    function chargerContactsStockes() {
+        try {
+            var brut = localStorage.getItem(STORE_KEY);
+            return brut ? JSON.parse(brut) : [];
+        } catch (e) { return []; }
+    }
+    function sauverContact(c) {
+        var liste = chargerContactsStockes();
+        liste.push(c);
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(liste)); } catch (e) {}
+    }
+
+    btnSubmit.addEventListener('click', () => {
+        errBox.textContent = '';
+        var continent = selContinent.value;
+        var idx = selPays.value;
+        var ville = inVille.value.trim();
+        var snap = inSnap.value.trim();
+        var tel = inTel.value.trim();
+        var tg = inTg.value.trim();
+        var wa = inWa.value.trim();
+
+        if (!continent || idx === '' || !ville) {
+            errBox.textContent = 'Continent, pays et ville sont requis.';
+            return;
+        }
+        if (!snap && !tel && !tg && !wa) {
+            errBox.textContent = 'Renseigne au moins un moyen de contact.';
+            return;
+        }
+
+        var pays = continentsData[continent][parseInt(idx, 10)];
+        var contact = {
+            continent: continent,
+            pays: pays.nom,
+            ville: ville,
+            lat: pays.lat,
+            lng: pays.lng,
+            snap: snap, tel: tel, tg: tg, wa: wa
+        };
+        ajouterContactSurCarte(contact);
+        sauverContact(contact);
+        map.flyTo({ center: [contact.lng, contact.lat], zoom: Math.max(pays.zoom, 6) });
+
+        inVille.value = ''; inSnap.value = ''; inTel.value = '';
+        inTg.value = ''; inWa.value = '';
+        errBox.textContent = '';
+    });
+
+    // Recharge les contacts déjà ajoutés
+    chargerContactsStockes().forEach(ajouterContactSurCarte);
 
     // Avertissement légal dans la console (trace)
     console.log("Carte d'aide légale - Aucune donnée personnelle ni dénonciation publique.");
