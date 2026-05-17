@@ -114,6 +114,33 @@
             cursor: pointer;
         }
         .country-list li:hover { background: #ecf0f1; }
+
+        .panel-launcher.add { top: 134px; background: #27ae60; }
+        .panel-launcher.add:hover { background: #2ecc71; }
+
+        .form-panel { width: 240px; }
+        .form-panel .panel-body { padding: 10px 12px; gap: 6px; display: flex; flex-direction: column; }
+        .form-panel label { font-size: 11px; color: #555; margin-top: 4px; }
+        .form-panel select,
+        .form-panel input {
+            padding: 5px 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+        .form-panel button.submit {
+            margin-top: 8px;
+            padding: 7px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .form-panel button.submit:hover { background: #2ecc71; }
+        .form-panel .error { color: #c0392b; font-size: 11px; min-height: 14px; }
     </style>
 </head>
 <body>
@@ -123,6 +150,7 @@
 </div>
 <div id="map"></div>
 <button class="panel-launcher" id="panel-launcher" title="Aller à...">🌍</button>
+<button class="panel-launcher add" id="form-launcher" title="Ajouter un contact">➕</button>
 <div class="panel hidden" id="panel">
     <div class="panel-header" id="panel-header">
         <span>🌍 Aller à...</span>
@@ -132,6 +160,37 @@
         </span>
     </div>
     <div class="panel-body" id="panel-body"></div>
+</div>
+<div class="panel form-panel hidden" id="form-panel">
+    <div class="panel-header" id="form-header">
+        <span>➕ Ajouter un contact</span>
+        <span class="panel-close" id="form-close">×</span>
+    </div>
+    <div class="panel-body">
+        <label for="f-continent">Continent</label>
+        <select id="f-continent"><option value="">— choisir —</option></select>
+
+        <label for="f-pays">Pays</label>
+        <select id="f-pays" disabled><option value="">— choisir —</option></select>
+
+        <label for="f-ville">Ville</label>
+        <input id="f-ville" type="text" placeholder="Ex. Lyon" />
+
+        <label for="f-snap">Snap (optionnel)</label>
+        <input id="f-snap" type="text" placeholder="pseudo" />
+
+        <label for="f-tel">Numéro (optionnel)</label>
+        <input id="f-tel" type="tel" placeholder="+33 6 12 34 56 78" />
+
+        <label for="f-tg">Telegram (optionnel)</label>
+        <input id="f-tg" type="text" placeholder="@pseudo" />
+
+        <label for="f-wa">WhatsApp (optionnel)</label>
+        <input id="f-wa" type="tel" placeholder="+33 6 12 34 56 78" />
+
+        <div class="error" id="f-error"></div>
+        <button class="submit" id="f-submit">Ajouter sur la carte</button>
+    </div>
 </div>
 <div class="footer">
     Données indicatives | <a href="https://www.drogues.gouv.fr/" target="_blank">drogues.gouv.fr</a> | <a href="https://www.pharos.controle.gouv.fr/" target="_blank">Signalement Pharos</a>
@@ -238,7 +297,7 @@
 
     fetch('countries.json')
         .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
-        .then(construirePanneau)
+        .then(data => { construirePanneau(data); peuplerSelects(data); })
         .catch(err => console.error("Impossible de charger countries.json :", err));
 
     // Bouton réduire/agrandir
@@ -248,23 +307,163 @@
         panelToggle.textContent = panel.classList.contains('collapsed') ? '+' : '−';
     });
 
-    // Déplacement du panneau (souris + tactile via Pointer Events)
-    var dragging = false, offsetX = 0, offsetY = 0;
-    panelHeader.addEventListener('pointerdown', (e) => {
-        if (e.target === panelToggle) return;
-        dragging = true;
-        offsetX = e.clientX - panel.offsetLeft;
-        offsetY = e.clientY - panel.offsetTop;
-        panelHeader.setPointerCapture(e.pointerId);
+    // Rend un panneau déplaçable par son header (souris + tactile)
+    function rendreDraggable(panneau, header, ignorerCibles) {
+        var dragging = false, offsetX = 0, offsetY = 0;
+        header.addEventListener('pointerdown', (e) => {
+            if (ignorerCibles && ignorerCibles.includes(e.target)) return;
+            dragging = true;
+            offsetX = e.clientX - panneau.offsetLeft;
+            offsetY = e.clientY - panneau.offsetTop;
+            header.setPointerCapture(e.pointerId);
+        });
+        header.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            var x = Math.max(0, Math.min(window.innerWidth - panneau.offsetWidth, e.clientX - offsetX));
+            var y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - offsetY));
+            panneau.style.left = x + 'px';
+            panneau.style.top = y + 'px';
+        });
+        header.addEventListener('pointerup', () => dragging = false);
+    }
+    rendreDraggable(panel, panelHeader, [panelToggle, panelClose]);
+
+    // -------- Panneau "Ajouter un contact" --------
+    var formPanel = document.getElementById('form-panel');
+    var formHeader = document.getElementById('form-header');
+    var formClose = document.getElementById('form-close');
+    var formLauncher = document.getElementById('form-launcher');
+    var selContinent = document.getElementById('f-continent');
+    var selPays = document.getElementById('f-pays');
+    var inVille = document.getElementById('f-ville');
+    var inSnap = document.getElementById('f-snap');
+    var inTel = document.getElementById('f-tel');
+    var inTg = document.getElementById('f-tg');
+    var inWa = document.getElementById('f-wa');
+    var errBox = document.getElementById('f-error');
+    var btnSubmit = document.getElementById('f-submit');
+
+    L.DomEvent.disableClickPropagation(formPanel);
+    L.DomEvent.disableScrollPropagation(formPanel);
+    L.DomEvent.disableClickPropagation(formLauncher);
+    rendreDraggable(formPanel, formHeader, [formClose]);
+
+    formLauncher.addEventListener('click', () => {
+        formPanel.classList.remove('hidden');
+        formLauncher.style.display = 'none';
     });
-    panelHeader.addEventListener('pointermove', (e) => {
-        if (!dragging) return;
-        var x = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, e.clientX - offsetX));
-        var y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - offsetY));
-        panel.style.left = x + 'px';
-        panel.style.top = y + 'px';
+    formClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        formPanel.classList.add('hidden');
+        formLauncher.style.display = '';
     });
-    panelHeader.addEventListener('pointerup', () => dragging = false);
+
+    // Données pays pour le formulaire (rempli quand countries.json est chargé)
+    var continentsData = {};
+    function peuplerSelects(continents) {
+        continentsData = continents;
+        Object.keys(continents).forEach(c => {
+            var opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            selContinent.appendChild(opt);
+        });
+    }
+    selContinent.addEventListener('change', () => {
+        selPays.innerHTML = '<option value="">— choisir —</option>';
+        var pays = continentsData[selContinent.value] || [];
+        pays.forEach((p, i) => {
+            var opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = p.nom;
+            selPays.appendChild(opt);
+        });
+        selPays.disabled = pays.length === 0;
+    });
+
+    // Liens contact -> URL cliquable
+    function lienContact(type, valeur) {
+        var v = valeur.trim();
+        if (!v) return '';
+        if (type === 'snap')   return '<a href="https://snapchat.com/add/' + encodeURIComponent(v.replace(/^@/, '')) + '" target="_blank">👻 ' + v + '</a>';
+        if (type === 'tel')    return '<a href="tel:' + v.replace(/[^+0-9]/g, '') + '">📞 ' + v + '</a>';
+        if (type === 'tg')     return '<a href="https://t.me/' + encodeURIComponent(v.replace(/^@/, '')) + '" target="_blank">✈️ ' + v + '</a>';
+        if (type === 'wa')     return '<a href="https://wa.me/' + v.replace(/[^0-9]/g, '') + '" target="_blank">💬 ' + v + '</a>';
+        return '';
+    }
+
+    function popupHtml(c) {
+        var lignes = [];
+        if (c.snap) lignes.push(lienContact('snap', c.snap));
+        if (c.tel)  lignes.push(lienContact('tel',  c.tel));
+        if (c.tg)   lignes.push(lienContact('tg',   c.tg));
+        if (c.wa)   lignes.push(lienContact('wa',   c.wa));
+        return '<b>' + c.ville + '</b><br>' +
+               '<small>' + c.pays + ' — ' + c.continent + '</small><br>' +
+               lignes.join('<br>');
+    }
+
+    var iconeContact = L.divIcon({ html: "👤", className: "custom-icon", iconSize: [25,25] });
+
+    function ajouterContactSurCarte(c) {
+        L.marker([c.lat, c.lng], { icon: iconeContact })
+            .addTo(map)
+            .bindPopup(popupHtml(c));
+    }
+
+    // Persistance via localStorage
+    var STORE_KEY = 'contacts_v1';
+    function chargerContactsStockes() {
+        try {
+            var brut = localStorage.getItem(STORE_KEY);
+            return brut ? JSON.parse(brut) : [];
+        } catch (e) { return []; }
+    }
+    function sauverContact(c) {
+        var liste = chargerContactsStockes();
+        liste.push(c);
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(liste)); } catch (e) {}
+    }
+
+    btnSubmit.addEventListener('click', () => {
+        errBox.textContent = '';
+        var continent = selContinent.value;
+        var idx = selPays.value;
+        var ville = inVille.value.trim();
+        var snap = inSnap.value.trim();
+        var tel = inTel.value.trim();
+        var tg = inTg.value.trim();
+        var wa = inWa.value.trim();
+
+        if (!continent || idx === '' || !ville) {
+            errBox.textContent = 'Continent, pays et ville sont requis.';
+            return;
+        }
+        if (!snap && !tel && !tg && !wa) {
+            errBox.textContent = 'Renseigne au moins un moyen de contact.';
+            return;
+        }
+
+        var pays = continentsData[continent][parseInt(idx, 10)];
+        var contact = {
+            continent: continent,
+            pays: pays.nom,
+            ville: ville,
+            lat: pays.lat,
+            lng: pays.lng,
+            snap: snap, tel: tel, tg: tg, wa: wa
+        };
+        ajouterContactSurCarte(contact);
+        sauverContact(contact);
+        map.flyTo([contact.lat, contact.lng], Math.max(pays.zoom, 6));
+
+        inVille.value = ''; inSnap.value = ''; inTel.value = '';
+        inTg.value = ''; inWa.value = '';
+        errBox.textContent = '';
+    });
+
+    // Recharge les contacts déjà ajoutés
+    chargerContactsStockes().forEach(ajouterContactSurCarte);
 
     // Avertissement légal dans la console (trace)
     console.log("Carte d'aide légale - Aucune donnée personnelle ni dénonciation publique.");
