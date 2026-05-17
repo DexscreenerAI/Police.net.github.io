@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prévention & Aide - Carte des ressources</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; }
+        #map { height: 100vh; width: 100%; }
+        .header {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+            font-size: 14px;
+            pointer-events: none;
+        }
+        .footer {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            pointer-events: none;
+            font-family: monospace;
+        }
+        a { pointer-events: auto; }
+    </style>
+</head>
+<body>
+<div class="header">
+    <strong>🧭 Aide & Prévention</strong> – Centres d’addictologie, associations, soutien victimes.<br>
+    ⚠️ En cas d'urgence immédiate : <strong>17</strong> (police) ou <strong>112</strong> (Europe).
+</div>
+<div id="map"></div>
+<div class="footer">
+    Données indicatives | <a href="https://www.drogues.gouv.fr/" target="_blank">drogues.gouv.fr</a> | <a href="https://www.pharos.controle.gouv.fr/" target="_blank">Signalement Pharos</a>
+</div>
+
+<script>
+    // Initialisation de la carte centrée sur Paris (modifiable)
+    var map = L.map('map').setView([48.8566, 2.3522], 12);
+
+    // Fond de carte OpenStreetMap (libre et sans tracking)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CartoDB</a>',
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(map);
+
+    // Exemples de points d'aide (nom, adresse, tel, type, coordonnées)
+    var ressources = [
+        {
+            nom: "CSAPA - Espace Murger",
+            adresse: "12 rue André del Sarte, 75018 Paris",
+            tel: "01 42 23 36 10",
+            type: "addictologie",
+            lat: 48.8926, lng: 2.3442
+        },
+        {
+            nom: "CAARUD - Gaïa Paris",
+            adresse: "45 rue des Cisternes, 75004 Paris",
+            tel: "01 44 59 25 70",
+            type: "réduction risques",
+            lat: 48.8553, lng: 2.3559
+        },
+        {
+            nom: "France Victimes 75",
+            adresse: "21 rue de Châteaudun, 75009 Paris",
+            tel: "01 45 26 33 00",
+            type: "aide victimes",
+            lat: 48.8759, lng: 2.3368
+        },
+        {
+            nom: "Point d'accès santé - Hôpital Lariboisière",
+            adresse: "2 rue Ambroise Paré, 75010 Paris",
+            tel: "01 49 95 65 65",
+            type: "soins",
+            lat: 48.8841, lng: 2.3518
+        }
+    ];
+
+    // Icônes selon le type
+    var icones = {
+        addictologie: L.divIcon({ html: "🏥", className: "custom-icon", iconSize: [25,25] }),
+        "réduction risques": L.divIcon({ html: "💉", className: "custom-icon", iconSize: [25,25] }),
+        "aide victimes": L.divIcon({ html: "🛡️", className: "custom-icon", iconSize: [25,25] }),
+        soins: L.divIcon({ html: "🩺", className: "custom-icon", iconSize: [25,25] })
+    };
+
+    // Ajout des marqueurs
+    ressources.forEach(r => {
+        var marker = L.marker([r.lat, r.lng], { icon: icones[r.type] || L.divIcon({ html: "📍" }) }).addTo(map);
+        marker.bindPopup(`
+            <b>${r.nom}</b><br>
+            ${r.adresse}<br>
+            📞 ${r.tel}<br>
+            <i>${r.type}</i><br>
+            <a href="https://www.google.com/maps/search/?api=1&query=${r.lat},${r.lng}" target="_blank">🗺️ Itinéraire</a>
+        `);
+    });
+
+    // Avertissement légal dans la console (trace)
+    console.log("Carte d'aide légale - Aucune donnée personnelle ni dénonciation publique.");
+</script>
+</body>
+</html>
