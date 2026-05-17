@@ -47,8 +47,8 @@
 </div>
 
 <script>
-    // Initialisation de la carte centrée sur Paris (modifiable)
-    var map = L.map('map').setView([48.8566, 2.3522], 12);
+    // Initialisation : vue globale au lancement, l'utilisateur zoome ensuite
+    var map = L.map('map', { worldCopyJump: true, minZoom: 2 }).setView([20, 0], 2);
 
     // Fond de carte OpenStreetMap (libre et sans tracking)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
