@@ -35,10 +35,27 @@
         }
         a { pointer-events: auto; }
 
-        .panel {
+        .panel-launcher {
             position: absolute;
             top: 80px;
             left: 10px;
+            z-index: 1000;
+            background: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+        }
+        .panel-launcher:hover { background: #34495e; }
+
+        .panel {
+            position: absolute;
+            top: 80px;
+            left: 64px;
             z-index: 1000;
             background: white;
             border-radius: 8px;
@@ -48,6 +65,12 @@
             display: flex;
             flex-direction: column;
             font-size: 13px;
+        }
+        .panel.hidden { display: none; }
+        .panel-close {
+            cursor: pointer;
+            padding: 0 4px;
+            margin-left: 4px;
         }
         .panel-header {
             background: #2c3e50;
@@ -99,10 +122,14 @@
     ⚠️ En cas d'urgence immédiate : <strong>17</strong> (police) ou <strong>112</strong> (Europe).
 </div>
 <div id="map"></div>
-<div class="panel" id="panel">
+<button class="panel-launcher" id="panel-launcher" title="Aller à...">🌍</button>
+<div class="panel hidden" id="panel">
     <div class="panel-header" id="panel-header">
         <span>🌍 Aller à...</span>
-        <span class="panel-toggle" id="panel-toggle">−</span>
+        <span>
+            <span class="panel-toggle" id="panel-toggle">−</span>
+            <span class="panel-close" id="panel-close">×</span>
+        </span>
     </div>
     <div class="panel-body" id="panel-body"></div>
 </div>
@@ -162,10 +189,24 @@
     var panelBody = document.getElementById('panel-body');
     var panelHeader = document.getElementById('panel-header');
     var panelToggle = document.getElementById('panel-toggle');
+    var panelLauncher = document.getElementById('panel-launcher');
+    var panelClose = document.getElementById('panel-close');
 
-    // Empêche Leaflet de capter clics/scroll/drag faits sur le panneau
+    // Empêche Leaflet de capter clics/scroll/drag faits sur le panneau et le bouton
     L.DomEvent.disableClickPropagation(panel);
     L.DomEvent.disableScrollPropagation(panel);
+    L.DomEvent.disableClickPropagation(panelLauncher);
+
+    // Ouvrir / fermer le panneau via le bouton
+    panelLauncher.addEventListener('click', () => {
+        panel.classList.remove('hidden');
+        panelLauncher.style.display = 'none';
+    });
+    panelClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.classList.add('hidden');
+        panelLauncher.style.display = '';
+    });
 
     function construirePanneau(continents) {
         Object.keys(continents).forEach(nomCont => {
