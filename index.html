@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prévention & Aide - Carte des ressources</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" />
+    <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
     <style>
         body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; }
         #map { height: 100vh; width: 100%; }
@@ -141,6 +141,26 @@
         }
         .form-panel button.submit:hover { background: #2ecc71; }
         .form-panel .error { color: #c0392b; font-size: 11px; min-height: 14px; }
+
+        body { background: #000814; }
+        .marker-pin {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            background: white;
+            border: 2px solid white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(0,0,0,0.7);
+        }
+        .marker-pin.pin-contact {
+            background: #27ae60;
+            border-color: #2ecc71;
+            color: white;
+        }
+        .maplibregl-popup-content { font-family: Arial, Helvetica, sans-serif; }
     </style>
 </head>
 <body>
@@ -197,34 +217,59 @@
 </div>
 
 <script>
-    // Initialisation : vue globale au lancement, l'utilisateur zoome ensuite
-    var map = L.map('map', { worldCopyJump: true, minZoom: 2 }).setView([20, 0], 2);
+    // Globe 3D vu de l'espace (MapLibre GL avec projection globe + imagerie satellite ESRI)
+    var map = new maplibregl.Map({
+        container: 'map',
+        center: [0, 20],
+        zoom: 0.4,
+        minZoom: 0,
+        maxZoom: 18,
+        projection: 'globe',
+        style: {
+            version: 8,
+            sources: {
+                basemap: {
+                    type: 'raster',
+                    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+                    tileSize: 256,
+                    attribution: 'Tiles &copy; Esri — World Imagery'
+                }
+            },
+            layers: [
+                { id: 'space', type: 'background', paint: { 'background-color': '#000814' } },
+                { id: 'basemap', type: 'raster', source: 'basemap' }
+            ]
+        }
+    });
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 
-    // Fond de carte OpenStreetMap (libre et sans tracking)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CartoDB</a>',
-        subdomains: 'abcd',
-        maxZoom: 19
-    }).addTo(map);
+    // Construit un élément HTML pour un marqueur (utilisable comme `element` de Marker)
+    function makeIcon(emoji, extraClass) {
+        var el = document.createElement('div');
+        el.className = 'marker-pin' + (extraClass ? ' ' + extraClass : '');
+        el.textContent = emoji;
+        return el;
+    }
 
-    // Icônes selon le type
-    var icones = {
-        addictologie: L.divIcon({ html: "🏥", className: "custom-icon", iconSize: [25,25] }),
-        "réduction risques": L.divIcon({ html: "💉", className: "custom-icon", iconSize: [25,25] }),
-        "aide victimes": L.divIcon({ html: "🛡️", className: "custom-icon", iconSize: [25,25] }),
-        soins: L.divIcon({ html: "🩺", className: "custom-icon", iconSize: [25,25] })
-    };
+    function iconePourType(type) {
+        if (type === 'addictologie') return '🏥';
+        if (type === 'réduction risques') return '💉';
+        if (type === 'aide victimes') return '🛡️';
+        if (type === 'soins') return '🩺';
+        return '📍';
+    }
 
     function ajouterRessources(ressources) {
         ressources.forEach(r => {
-            var marker = L.marker([r.lat, r.lng], { icon: icones[r.type] || L.divIcon({ html: "📍" }) }).addTo(map);
-            marker.bindPopup(`
-                <b>${r.nom}</b><br>
-                ${r.adresse}<br>
-                📞 ${r.tel}<br>
-                <i>${r.type}</i><br>
-                <a href="https://www.google.com/maps/search/?api=1&query=${r.lat},${r.lng}" target="_blank">🗺️ Itinéraire</a>
-            `);
+            var html = '<b>' + r.nom + '</b><br>' +
+                       r.adresse + '<br>' +
+                       '📞 ' + r.tel + '<br>' +
+                       '<i>' + r.type + '</i><br>' +
+                       '<a href="https://www.google.com/maps/search/?api=1&query=' + r.lat + ',' + r.lng + '" target="_blank">🗺️ Itinéraire</a>';
+            new maplibregl.Marker({ element: makeIcon(iconePourType(r.type)) })
+                .setLngLat([r.lng, r.lat])
+                .setPopup(new maplibregl.Popup({ offset: 18 }).setHTML(html))
+                .addTo(map);
         });
     }
 
@@ -237,10 +282,10 @@
         .then(ajouterRessources)
         .catch(err => {
             console.error("Impossible de charger resources.json :", err);
-            L.popup()
-                .setLatLng(map.getCenter())
-                .setContent("⚠️ Impossible de charger les ressources. Réessayez plus tard.")
-                .openOn(map);
+            new maplibregl.Popup()
+                .setLngLat(map.getCenter())
+                .setHTML("⚠️ Impossible de charger les ressources. Réessayez plus tard.")
+                .addTo(map);
         });
 
     // Panneau de navigation par continent/pays
@@ -250,11 +295,6 @@
     var panelToggle = document.getElementById('panel-toggle');
     var panelLauncher = document.getElementById('panel-launcher');
     var panelClose = document.getElementById('panel-close');
-
-    // Empêche Leaflet de capter clics/scroll/drag faits sur le panneau et le bouton
-    L.DomEvent.disableClickPropagation(panel);
-    L.DomEvent.disableScrollPropagation(panel);
-    L.DomEvent.disableClickPropagation(panelLauncher);
 
     // Ouvrir / fermer le panneau via le bouton
     panelLauncher.addEventListener('click', () => {
@@ -280,7 +320,7 @@
             continents[nomCont].forEach(pays => {
                 var li = document.createElement('li');
                 li.textContent = pays.nom;
-                li.addEventListener('click', () => map.flyTo([pays.lat, pays.lng], pays.zoom));
+                li.addEventListener('click', () => map.flyTo({ center: [pays.lng, pays.lat], zoom: pays.zoom }));
                 ul.appendChild(li);
             });
 
@@ -343,9 +383,6 @@
     var errBox = document.getElementById('f-error');
     var btnSubmit = document.getElementById('f-submit');
 
-    L.DomEvent.disableClickPropagation(formPanel);
-    L.DomEvent.disableScrollPropagation(formPanel);
-    L.DomEvent.disableClickPropagation(formLauncher);
     rendreDraggable(formPanel, formHeader, [formClose]);
 
     formLauncher.addEventListener('click', () => {
@@ -403,12 +440,11 @@
                lignes.join('<br>');
     }
 
-    var iconeContact = L.divIcon({ html: "👤", className: "custom-icon", iconSize: [25,25] });
-
     function ajouterContactSurCarte(c) {
-        L.marker([c.lat, c.lng], { icon: iconeContact })
-            .addTo(map)
-            .bindPopup(popupHtml(c));
+        new maplibregl.Marker({ element: makeIcon('👤', 'pin-contact') })
+            .setLngLat([c.lng, c.lat])
+            .setPopup(new maplibregl.Popup({ offset: 18 }).setHTML(popupHtml(c)))
+            .addTo(map);
     }
 
     // Persistance via localStorage
@@ -455,7 +491,7 @@
         };
         ajouterContactSurCarte(contact);
         sauverContact(contact);
-        map.flyTo([contact.lat, contact.lng], Math.max(pays.zoom, 6));
+        map.flyTo({ center: [contact.lng, contact.lat], zoom: Math.max(pays.zoom, 6) });
 
         inVille.value = ''; inSnap.value = ''; inTel.value = '';
         inTg.value = ''; inWa.value = '';
