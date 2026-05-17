@@ -143,6 +143,43 @@
         .form-panel .error { color: #c0392b; font-size: 11px; min-height: 14px; }
 
         body { background: #000814; }
+
+        #stars-bg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background: #000814;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+        }
+        @keyframes twinkle {
+            0%, 100% { opacity: var(--base-opacity, 0.8); }
+            50% { opacity: calc(var(--base-opacity, 0.8) * 0.3); }
+        }
+        .star.tw { animation: twinkle 3s ease-in-out infinite; }
+
+        #map { position: relative; z-index: 1; background: transparent; }
+        .maplibregl-canvas { background: transparent !important; }
+
+        .atmosphere {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 2;
+            background: radial-gradient(
+                circle at center,
+                transparent 32%,
+                rgba(100, 180, 255, 0.10) 38%,
+                rgba(70, 130, 220, 0.04) 48%,
+                transparent 62%
+            );
+        }
+
         .marker-pin {
             width: 30px; height: 30px;
             border-radius: 50%;
@@ -221,12 +258,12 @@
     var map = new maplibregl.Map({
         container: 'map',
         center: [0, 20],
-        zoom: 0.4,
+        zoom: 0,
         minZoom: 0,
         maxZoom: 18,
-        projection: 'globe',
         style: {
             version: 8,
+            projection: { type: 'globe' },
             sources: {
                 basemap: {
                     type: 'raster',
@@ -236,12 +273,55 @@
                 }
             },
             layers: [
-                { id: 'space', type: 'background', paint: { 'background-color': '#000814' } },
+                { id: 'space', type: 'background', paint: { 'background-color': '#000814', 'background-opacity': 0 } },
                 { id: 'basemap', type: 'raster', source: 'basemap' }
             ]
         }
     });
+    // Force la projection globe (compatibilité versions MapLibre)
+    map.on('style.load', () => { try { map.setProjection({ type: 'globe' }); } catch (e) {} });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+
+    // -------- Étoiles + rotation lente d'intro --------
+    var starsBg = document.createElement('div');
+    starsBg.id = 'stars-bg';
+    document.body.insertBefore(starsBg, document.body.firstChild);
+    for (var i = 0; i < 220; i++) {
+        var s = document.createElement('div');
+        s.className = 'star' + (Math.random() < 0.3 ? ' tw' : '');
+        var size = Math.random() * 1.6 + 0.4;
+        var op = Math.random() * 0.7 + 0.3;
+        s.style.width = s.style.height = size.toFixed(2) + 'px';
+        s.style.left = (Math.random() * 100).toFixed(2) + '%';
+        s.style.top = (Math.random() * 100).toFixed(2) + '%';
+        s.style.opacity = op.toFixed(2);
+        s.style.setProperty('--base-opacity', op.toFixed(2));
+        s.style.animationDelay = (Math.random() * 3).toFixed(2) + 's';
+        starsBg.appendChild(s);
+    }
+    var atmosphere = document.createElement('div');
+    atmosphere.className = 'atmosphere';
+    document.body.appendChild(atmosphere);
+
+    // Rotation automatique au démarrage (s'arrête à la première interaction)
+    var enRotation = true, lastTime = 0;
+    function arreterRotation() { enRotation = false; }
+    function tourner(t) {
+        if (!enRotation) return;
+        if (!lastTime) lastTime = t;
+        var dt = (t - lastTime) / 1000;
+        lastTime = t;
+        var c = map.getCenter();
+        var lng = c.lng + dt * 4;  // ~4°/seconde
+        if (lng > 180) lng -= 360;
+        map.setCenter([lng, c.lat]);
+        requestAnimationFrame(tourner);
+    }
+    map.on('load', () => requestAnimationFrame(tourner));
+    map.on('movestart', (e) => { if (e.originalEvent) arreterRotation(); });
+    ['wheel', 'pointerdown', 'keydown'].forEach(ev =>
+        map.getContainer().addEventListener(ev, arreterRotation, { once: true })
+    );
 
     // Construit un élément HTML pour un marqueur (utilisable comme `element` de Marker)
     function makeIcon(emoji, extraClass) {
@@ -320,7 +400,7 @@
             continents[nomCont].forEach(pays => {
                 var li = document.createElement('li');
                 li.textContent = pays.nom;
-                li.addEventListener('click', () => map.flyTo({ center: [pays.lng, pays.lat], zoom: pays.zoom }));
+                li.addEventListener('click', () => { arreterRotation(); map.flyTo({ center: [pays.lng, pays.lat], zoom: pays.zoom }); });
                 ul.appendChild(li);
             });
 
@@ -461,7 +541,18 @@
         try { localStorage.setItem(STORE_KEY, JSON.stringify(liste)); } catch (e) {}
     }
 
-    btnSubmit.addEventListener('click', () => {
+    // Géocodage gratuit via Nominatim (OpenStreetMap)
+    async function geocoderVille(ville, pays) {
+        var q = encodeURIComponent(ville + ', ' + pays);
+        var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + q;
+        var resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+        if (!data.length) return null;
+        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    }
+
+    btnSubmit.addEventListener('click', async () => {
         errBox.textContent = '';
         var continent = selContinent.value;
         var idx = selPays.value;
@@ -481,21 +572,41 @@
         }
 
         var pays = continentsData[continent][parseInt(idx, 10)];
+        var lat = pays.lat, lng = pays.lng, zoomFinal = pays.zoom;
+        var labelOriginal = btnSubmit.textContent;
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Recherche…';
+        try {
+            var coords = await geocoderVille(ville, pays.nom);
+            if (coords) {
+                lat = coords.lat;
+                lng = coords.lng;
+                zoomFinal = 11;
+            } else {
+                errBox.textContent = '⚠️ Ville introuvable, placée au centre du pays.';
+            }
+        } catch (e) {
+            errBox.textContent = '⚠️ Géocodage indisponible (' + e.message + ').';
+        } finally {
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = labelOriginal;
+        }
+
         var contact = {
             continent: continent,
             pays: pays.nom,
             ville: ville,
-            lat: pays.lat,
-            lng: pays.lng,
+            lat: lat,
+            lng: lng,
             snap: snap, tel: tel, tg: tg, wa: wa
         };
+        arreterRotation();
         ajouterContactSurCarte(contact);
         sauverContact(contact);
-        map.flyTo({ center: [contact.lng, contact.lat], zoom: Math.max(pays.zoom, 6) });
+        map.flyTo({ center: [lng, lat], zoom: zoomFinal });
 
         inVille.value = ''; inSnap.value = ''; inTel.value = '';
         inTg.value = ''; inWa.value = '';
-        errBox.textContent = '';
     });
 
     // Recharge les contacts déjà ajoutés
