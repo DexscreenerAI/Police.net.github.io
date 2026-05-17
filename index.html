@@ -34,6 +34,63 @@
             font-family: monospace;
         }
         a { pointer-events: auto; }
+
+        .panel {
+            position: absolute;
+            top: 80px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+            width: 220px;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+            font-size: 13px;
+        }
+        .panel-header {
+            background: #2c3e50;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px 8px 0 0;
+            cursor: move;
+            user-select: none;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel-toggle {
+            cursor: pointer;
+            padding: 0 4px;
+        }
+        .panel-body {
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+        .panel.collapsed .panel-body { display: none; }
+        .panel.collapsed { max-height: none; }
+        .continent-title {
+            font-weight: bold;
+            padding: 6px 12px;
+            cursor: pointer;
+            background: #f5f5f5;
+            display: flex;
+            justify-content: space-between;
+        }
+        .continent-title:hover { background: #e8e8e8; }
+        .country-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .country-list.collapsed { display: none; }
+        .country-list li {
+            padding: 4px 20px;
+            cursor: pointer;
+        }
+        .country-list li:hover { background: #ecf0f1; }
     </style>
 </head>
 <body>
@@ -42,13 +99,20 @@
     ⚠️ En cas d'urgence immédiate : <strong>17</strong> (police) ou <strong>112</strong> (Europe).
 </div>
 <div id="map"></div>
+<div class="panel" id="panel">
+    <div class="panel-header" id="panel-header">
+        <span>🌍 Aller à...</span>
+        <span class="panel-toggle" id="panel-toggle">−</span>
+    </div>
+    <div class="panel-body" id="panel-body"></div>
+</div>
 <div class="footer">
     Données indicatives | <a href="https://www.drogues.gouv.fr/" target="_blank">drogues.gouv.fr</a> | <a href="https://www.pharos.controle.gouv.fr/" target="_blank">Signalement Pharos</a>
 </div>
 
 <script>
-    // Initialisation de la carte centrée sur Paris (modifiable)
-    var map = L.map('map').setView([48.8566, 2.3522], 12);
+    // Initialisation : vue globale au lancement, l'utilisateur zoome ensuite
+    var map = L.map('map', { worldCopyJump: true, minZoom: 2 }).setView([20, 0], 2);
 
     // Fond de carte OpenStreetMap (libre et sans tracking)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -56,38 +120,6 @@
         subdomains: 'abcd',
         maxZoom: 19
     }).addTo(map);
-
-    // Exemples de points d'aide (nom, adresse, tel, type, coordonnées)
-    var ressources = [
-        {
-            nom: "CSAPA - Espace Murger",
-            adresse: "12 rue André del Sarte, 75018 Paris",
-            tel: "01 42 23 36 10",
-            type: "addictologie",
-            lat: 48.8926, lng: 2.3442
-        },
-        {
-            nom: "CAARUD - Gaïa Paris",
-            adresse: "45 rue des Cisternes, 75004 Paris",
-            tel: "01 44 59 25 70",
-            type: "réduction risques",
-            lat: 48.8553, lng: 2.3559
-        },
-        {
-            nom: "France Victimes 75",
-            adresse: "21 rue de Châteaudun, 75009 Paris",
-            tel: "01 45 26 33 00",
-            type: "aide victimes",
-            lat: 48.8759, lng: 2.3368
-        },
-        {
-            nom: "Point d'accès santé - Hôpital Lariboisière",
-            adresse: "2 rue Ambroise Paré, 75010 Paris",
-            tel: "01 49 95 65 65",
-            type: "soins",
-            lat: 48.8841, lng: 2.3518
-        }
-    ];
 
     // Icônes selon le type
     var icones = {
@@ -97,17 +129,101 @@
         soins: L.divIcon({ html: "🩺", className: "custom-icon", iconSize: [25,25] })
     };
 
-    // Ajout des marqueurs
-    ressources.forEach(r => {
-        var marker = L.marker([r.lat, r.lng], { icon: icones[r.type] || L.divIcon({ html: "📍" }) }).addTo(map);
-        marker.bindPopup(`
-            <b>${r.nom}</b><br>
-            ${r.adresse}<br>
-            📞 ${r.tel}<br>
-            <i>${r.type}</i><br>
-            <a href="https://www.google.com/maps/search/?api=1&query=${r.lat},${r.lng}" target="_blank">🗺️ Itinéraire</a>
-        `);
+    function ajouterRessources(ressources) {
+        ressources.forEach(r => {
+            var marker = L.marker([r.lat, r.lng], { icon: icones[r.type] || L.divIcon({ html: "📍" }) }).addTo(map);
+            marker.bindPopup(`
+                <b>${r.nom}</b><br>
+                ${r.adresse}<br>
+                📞 ${r.tel}<br>
+                <i>${r.type}</i><br>
+                <a href="https://www.google.com/maps/search/?api=1&query=${r.lat},${r.lng}" target="_blank">🗺️ Itinéraire</a>
+            `);
+        });
+    }
+
+    // Chargement des ressources depuis le fichier JSON externe
+    fetch('resources.json')
+        .then(response => {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(ajouterRessources)
+        .catch(err => {
+            console.error("Impossible de charger resources.json :", err);
+            L.popup()
+                .setLatLng(map.getCenter())
+                .setContent("⚠️ Impossible de charger les ressources. Réessayez plus tard.")
+                .openOn(map);
+        });
+
+    // Panneau de navigation par continent/pays
+    var panel = document.getElementById('panel');
+    var panelBody = document.getElementById('panel-body');
+    var panelHeader = document.getElementById('panel-header');
+    var panelToggle = document.getElementById('panel-toggle');
+
+    // Empêche Leaflet de capter clics/scroll/drag faits sur le panneau
+    L.DomEvent.disableClickPropagation(panel);
+    L.DomEvent.disableScrollPropagation(panel);
+
+    function construirePanneau(continents) {
+        Object.keys(continents).forEach(nomCont => {
+            var section = document.createElement('div');
+            var titre = document.createElement('div');
+            titre.className = 'continent-title';
+            titre.innerHTML = '<span>' + nomCont + '</span><span class="caret">▸</span>';
+
+            var ul = document.createElement('ul');
+            ul.className = 'country-list collapsed';
+
+            continents[nomCont].forEach(pays => {
+                var li = document.createElement('li');
+                li.textContent = pays.nom;
+                li.addEventListener('click', () => map.flyTo([pays.lat, pays.lng], pays.zoom));
+                ul.appendChild(li);
+            });
+
+            titre.addEventListener('click', () => {
+                ul.classList.toggle('collapsed');
+                titre.querySelector('.caret').textContent = ul.classList.contains('collapsed') ? '▸' : '▾';
+            });
+
+            section.appendChild(titre);
+            section.appendChild(ul);
+            panelBody.appendChild(section);
+        });
+    }
+
+    fetch('countries.json')
+        .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
+        .then(construirePanneau)
+        .catch(err => console.error("Impossible de charger countries.json :", err));
+
+    // Bouton réduire/agrandir
+    panelToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.classList.toggle('collapsed');
+        panelToggle.textContent = panel.classList.contains('collapsed') ? '+' : '−';
     });
+
+    // Déplacement du panneau (souris + tactile via Pointer Events)
+    var dragging = false, offsetX = 0, offsetY = 0;
+    panelHeader.addEventListener('pointerdown', (e) => {
+        if (e.target === panelToggle) return;
+        dragging = true;
+        offsetX = e.clientX - panel.offsetLeft;
+        offsetY = e.clientY - panel.offsetTop;
+        panelHeader.setPointerCapture(e.pointerId);
+    });
+    panelHeader.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        var x = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, e.clientX - offsetX));
+        var y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - offsetY));
+        panel.style.left = x + 'px';
+        panel.style.top = y + 'px';
+    });
+    panelHeader.addEventListener('pointerup', () => dragging = false);
 
     // Avertissement légal dans la console (trace)
     console.log("Carte d'aide légale - Aucune donnée personnelle ni dénonciation publique.");
