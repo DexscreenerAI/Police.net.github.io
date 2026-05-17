@@ -122,12 +122,17 @@
         .form-panel .panel-body { padding: 10px 12px; gap: 6px; display: flex; flex-direction: column; }
         .form-panel label { font-size: 11px; color: #555; margin-top: 4px; }
         .form-panel select,
-        .form-panel input {
+        .form-panel input,
+        .form-panel textarea {
             padding: 5px 6px;
             border: 1px solid #ccc;
             border-radius: 4px;
             font-size: 13px;
             font-family: inherit;
+        }
+        .form-panel textarea {
+            resize: vertical;
+            min-height: 50px;
         }
         .form-panel button.submit {
             margin-top: 8px;
@@ -202,7 +207,7 @@
 </head>
 <body>
 <div class="header">
-    <strong>🧭 Aide & Prévention</strong> – Centres d’addictologie, associations, soutien victimes.<br>
+    <strong>🧭 Carte des contacts</strong> – Ajoute un point avec ➕ (à gauche).<br>
     ⚠️ En cas d'urgence immédiate : <strong>17</strong> (police) ou <strong>112</strong> (Europe).
 </div>
 <div id="map"></div>
@@ -232,6 +237,9 @@
 
         <label for="f-ville">Ville</label>
         <input id="f-ville" type="text" placeholder="Ex. Lyon" />
+
+        <label for="f-desc">Description (optionnel)</label>
+        <textarea id="f-desc" rows="3" placeholder="Quelques mots..."></textarea>
 
         <label for="f-snap">Snap (optionnel)</label>
         <input id="f-snap" type="text" placeholder="pseudo" />
@@ -331,43 +339,6 @@
         return el;
     }
 
-    function iconePourType(type) {
-        if (type === 'addictologie') return '🏥';
-        if (type === 'réduction risques') return '💉';
-        if (type === 'aide victimes') return '🛡️';
-        if (type === 'soins') return '🩺';
-        return '📍';
-    }
-
-    function ajouterRessources(ressources) {
-        ressources.forEach(r => {
-            var html = '<b>' + r.nom + '</b><br>' +
-                       r.adresse + '<br>' +
-                       '📞 ' + r.tel + '<br>' +
-                       '<i>' + r.type + '</i><br>' +
-                       '<a href="https://www.google.com/maps/search/?api=1&query=' + r.lat + ',' + r.lng + '" target="_blank">🗺️ Itinéraire</a>';
-            new maplibregl.Marker({ element: makeIcon(iconePourType(r.type)) })
-                .setLngLat([r.lng, r.lat])
-                .setPopup(new maplibregl.Popup({ offset: 18 }).setHTML(html))
-                .addTo(map);
-        });
-    }
-
-    // Chargement des ressources depuis le fichier JSON externe
-    fetch('resources.json')
-        .then(response => {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        })
-        .then(ajouterRessources)
-        .catch(err => {
-            console.error("Impossible de charger resources.json :", err);
-            new maplibregl.Popup()
-                .setLngLat(map.getCenter())
-                .setHTML("⚠️ Impossible de charger les ressources. Réessayez plus tard.")
-                .addTo(map);
-        });
-
     // Panneau de navigation par continent/pays
     var panel = document.getElementById('panel');
     var panelBody = document.getElementById('panel-body');
@@ -456,6 +427,7 @@
     var selContinent = document.getElementById('f-continent');
     var selPays = document.getElementById('f-pays');
     var inVille = document.getElementById('f-ville');
+    var inDesc = document.getElementById('f-desc');
     var inSnap = document.getElementById('f-snap');
     var inTel = document.getElementById('f-tel');
     var inTg = document.getElementById('f-tg');
@@ -509,15 +481,23 @@
         return '';
     }
 
+    function escHtml(s) {
+        return String(s).replace(/[&<>"']/g, ch => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[ch]));
+    }
+
     function popupHtml(c) {
         var lignes = [];
         if (c.snap) lignes.push(lienContact('snap', c.snap));
         if (c.tel)  lignes.push(lienContact('tel',  c.tel));
         if (c.tg)   lignes.push(lienContact('tg',   c.tg));
         if (c.wa)   lignes.push(lienContact('wa',   c.wa));
-        return '<b>' + c.ville + '</b><br>' +
-               '<small>' + c.pays + ' — ' + c.continent + '</small><br>' +
-               lignes.join('<br>');
+        var html = '<b>' + escHtml(c.ville) + '</b><br>' +
+                   '<small>' + escHtml(c.pays) + ' — ' + escHtml(c.continent) + '</small><br>';
+        if (c.desc) html += '<div style="margin:6px 0">' + escHtml(c.desc).replace(/\n/g, '<br>') + '</div>';
+        html += lignes.join('<br>');
+        return html;
     }
 
     function ajouterContactSurCarte(c) {
@@ -557,6 +537,7 @@
         var continent = selContinent.value;
         var idx = selPays.value;
         var ville = inVille.value.trim();
+        var desc = inDesc.value.trim();
         var snap = inSnap.value.trim();
         var tel = inTel.value.trim();
         var tg = inTg.value.trim();
@@ -598,6 +579,7 @@
             ville: ville,
             lat: lat,
             lng: lng,
+            desc: desc,
             snap: snap, tel: tel, tg: tg, wa: wa
         };
         arreterRotation();
@@ -605,7 +587,8 @@
         sauverContact(contact);
         map.flyTo({ center: [lng, lat], zoom: zoomFinal });
 
-        inVille.value = ''; inSnap.value = ''; inTel.value = '';
+        inVille.value = ''; inDesc.value = '';
+        inSnap.value = ''; inTel.value = '';
         inTg.value = ''; inWa.value = '';
     });
 
