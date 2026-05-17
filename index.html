@@ -57,38 +57,6 @@
         maxZoom: 19
     }).addTo(map);
 
-    // Exemples de points d'aide (nom, adresse, tel, type, coordonnées)
-    var ressources = [
-        {
-            nom: "CSAPA - Espace Murger",
-            adresse: "12 rue André del Sarte, 75018 Paris",
-            tel: "01 42 23 36 10",
-            type: "addictologie",
-            lat: 48.8926, lng: 2.3442
-        },
-        {
-            nom: "CAARUD - Gaïa Paris",
-            adresse: "45 rue des Cisternes, 75004 Paris",
-            tel: "01 44 59 25 70",
-            type: "réduction risques",
-            lat: 48.8553, lng: 2.3559
-        },
-        {
-            nom: "France Victimes 75",
-            adresse: "21 rue de Châteaudun, 75009 Paris",
-            tel: "01 45 26 33 00",
-            type: "aide victimes",
-            lat: 48.8759, lng: 2.3368
-        },
-        {
-            nom: "Point d'accès santé - Hôpital Lariboisière",
-            adresse: "2 rue Ambroise Paré, 75010 Paris",
-            tel: "01 49 95 65 65",
-            type: "soins",
-            lat: 48.8841, lng: 2.3518
-        }
-    ];
-
     // Icônes selon le type
     var icones = {
         addictologie: L.divIcon({ html: "🏥", className: "custom-icon", iconSize: [25,25] }),
@@ -97,17 +65,33 @@
         soins: L.divIcon({ html: "🩺", className: "custom-icon", iconSize: [25,25] })
     };
 
-    // Ajout des marqueurs
-    ressources.forEach(r => {
-        var marker = L.marker([r.lat, r.lng], { icon: icones[r.type] || L.divIcon({ html: "📍" }) }).addTo(map);
-        marker.bindPopup(`
-            <b>${r.nom}</b><br>
-            ${r.adresse}<br>
-            📞 ${r.tel}<br>
-            <i>${r.type}</i><br>
-            <a href="https://www.google.com/maps/search/?api=1&query=${r.lat},${r.lng}" target="_blank">🗺️ Itinéraire</a>
-        `);
-    });
+    function ajouterRessources(ressources) {
+        ressources.forEach(r => {
+            var marker = L.marker([r.lat, r.lng], { icon: icones[r.type] || L.divIcon({ html: "📍" }) }).addTo(map);
+            marker.bindPopup(`
+                <b>${r.nom}</b><br>
+                ${r.adresse}<br>
+                📞 ${r.tel}<br>
+                <i>${r.type}</i><br>
+                <a href="https://www.google.com/maps/search/?api=1&query=${r.lat},${r.lng}" target="_blank">🗺️ Itinéraire</a>
+            `);
+        });
+    }
+
+    // Chargement des ressources depuis le fichier JSON externe
+    fetch('resources.json')
+        .then(response => {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(ajouterRessources)
+        .catch(err => {
+            console.error("Impossible de charger resources.json :", err);
+            L.popup()
+                .setLatLng(map.getCenter())
+                .setContent("⚠️ Impossible de charger les ressources. Réessayez plus tard.")
+                .openOn(map);
+        });
 
     // Avertissement légal dans la console (trace)
     console.log("Carte d'aide légale - Aucune donnée personnelle ni dénonciation publique.");
